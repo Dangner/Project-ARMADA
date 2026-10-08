@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ARMADA — Adaptive Immunity</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.7.0/p5.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Lora:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --dark:#141413; --light:#faf9f5; --mid:#b0aea5;
+  --lgray:#e8e6dc; --orange:#d97757; --blue:#6a9bcc; --green:#788c5d;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Poppins',sans-serif;background:linear-gradient(135deg,var(--light) 0%,#f5f3ee 100%);min-height:100vh;color:var(--dark)}
+.container{display:flex;min-height:100vh;padding:16px;gap:16px}
+.sidebar{width:280px;flex-shrink:0;background:rgba(255,255,255,.95);backdrop-filter:blur(10px);padding:20px;border-radius:12px;box-shadow:0 10px 30px rgba(20,20,19,.1);overflow-y:auto}
+.sidebar h1{font-family:'Lora',serif;font-size:18px;font-weight:500;color:var(--dark);margin-bottom:4px}
+.subtitle{color:var(--mid);font-size:12px;margin-bottom:24px;line-height:1.4}
+.control-section{margin-bottom:24px}
+.control-section h3{font-size:13px;font-weight:600;color:var(--dark);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.control-section h3::before{content:'•';color:var(--orange);font-weight:bold}
+.seed-input{width:100%;background:var(--light);padding:10px;border-radius:8px;font-family:'Courier New',monospace;font-size:13px;margin-bottom:10px;border:1px solid var(--lgray);text-align:center}
+.seed-input:focus{outline:none;border-color:var(--orange)}
+.seed-controls{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+.control-group{margin-bottom:16px}
+.control-group label{display:block;font-size:12px;font-weight:500;color:var(--dark);margin-bottom:6px}
+.slider-container{display:flex;align-items:center;gap:10px}
+.slider-container input[type=range]{flex:1;height:4px;background:var(--lgray);border-radius:2px;outline:none;-webkit-appearance:none}
+.slider-container input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--orange);border-radius:50%;cursor:pointer}
+.value-display{font-family:'Courier New',monospace;font-size:11px;color:var(--mid);min-width:44px;text-align:right}
+.button-row{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+button{background:var(--dark);color:var(--light);border:none;padding:8px 12px;border-radius:6px;font-family:'Poppins',sans-serif;font-size:12px;cursor:pointer;transition:all .2s}
+button:hover{background:#2a2a28}
+button.secondary{background:var(--lgray);color:var(--dark)}
+button.secondary:hover{background:#d4d2c8}
+.legend{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.leg-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mid)}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.stat-box{background:var(--light);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;font-family:'Courier New',monospace;color:var(--dark);line-height:1.8}
+.canvas-area{flex:1;display:flex;align-items:center;justify-content:center}
+#canvas-container canvas{border-radius:10px;box-shadow:0 20px 60px rgba(20,20,19,.2)}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="sidebar">
+  <h1>Adaptive Immunity</h1>
+  <div class="subtitle">ARMADA — immune-system dynamics in feature space</div>
+
+  <div class="control-section">
+    <h3>Seed</h3>
+    <input class="seed-input" type="number" id="seed-input" value="42837">
+    <div class="seed-controls">
+      <button class="secondary" onclick="previousSeed()">← Prev</button>
+      <button class="secondary" onclick="nextSeed()">Next →</button>
+    </div>
+    <button style="width:100%;margin-bottom:6px" onclick="randomSeedAndUpdate()">Random</button>
+  </div>
+
+  <div class="control-section">
+    <h3>Parameters</h3>
+    <div class="control-group">
+      <label>Malware Particles</label>
+      <div class="slider-container">
+        <input type="range" id="malCount" min="20" max="120" step="5" value="60" oninput="updateParam('malCount',+this.value)">
+        <span class="value-display" id="malCount-v">60</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Adversarial Pressure</label>
+      <div class="slider-container">
+        <input type="range" id="advStr" min="0.1" max="2.0" step="0.1" value="0.8" oninput="updateParam('advStr',+this.value)">
+        <span class="value-display" id="advStr-v">0.80</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Concept Drift Speed</label>
+      <div class="slider-container">
+        <input type="range" id="driftSpd" min="0.0" max="0.8" step="0.05" value="0.2" oninput="updateParam('driftSpd',+this.value)">
+        <span class="value-display" id="driftSpd-v">0.20</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Boundary Adaptation Rate</label>
+      <div class="slider-container">
+        <input type="range" id="adaptRate" min="0.01" max="0.3" step="0.01" value="0.08" oninput="updateParam('adaptRate',+this.value)">
+        <span class="value-display" id="adaptRate-v">0.08</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Immune Cell Density</label>
+      <div class="slider-container">
+        <input type="range" id="immuneCount" min="8" max="40" step="2" value="18" oninput="updateParam('immuneCount',+this.value)">
+        <span class="value-display" id="immuneCount-v">18</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="control-section">
+    <h3>Legend</h3>
+    <div class="legend">
+      <div class="leg-item"><div class="leg-dot" style="background:#4a90d9"></div>Benign samples</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#c0392b"></div>Malware samples</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#f39c12"></div>Adversarial probing</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#d97757"></div>Immune boundary cells</div>
+      <div class="leg-item"><div class="leg-dot" style="background:#e74c3c;opacity:.5"></div>Evasion event</div>
+    </div>
+    <div class="stat-box" id="stats">Initializing...</div>
+  </div>
+
+  <div class="control-section">
+    <h3>Actions</h3>
+    <div class="button-row">
+      <button onclick="reinit()">Regenerate</button>
+      <button class="secondary" onclick="resetParameters()">Reset</button>
+    </div>
+  </div>
+</div>
+
+<div class="canvas-area">
+  <div id="canvas-container"></div>
+</div>
+</div>
+
+<script>
+let params = {
+  seed: 42837, malCount: 60, advStr: 0.8, driftSpd: 0.2,
+  adaptRate: 0.08, immuneCount: 18
+};
+const defaultParams = {...params};
+
+let malwareParticles = [], benignParticles = [], immuneCells = [];
+let boundaryPoints = [];
+let driftOffset = {x:0, y:0};
+let evasionCount = 0, totalDetected = 0;
+let frameCount_ = 0;
+let p5inst;
+
+new p5(function(p){
+  p5inst = p;
+
+  p.setup = function(){
+    let cnv = p.createCanvas(720, 720);
+    cnv.parent('canvas-container');
+    p.colorMode(p.RGB, 255, 255, 255, 1.0);
+    reinit();
+  };
+
+  p.draw = function(){
+    frameCount_++;
+    let W = p.width, H = p.height;
+
+    // Drift the world slowly
+    let drift = params.driftSpd * 0.008;
+    driftOffset.x += p.cos(frameCount_ * 0.007) * drift;
+    driftOffset.y += p.sin(frameCount_ * 0.011) * drift;
+
+    // Fading background for trails
+    p.noStroke();
+    p.fill(250, 249, 245, 0.18);
+    p.rect(0, 0, W, H);
+
+    // Draw subtle grid lines (feature space)
+    drawGrid(p, W, H);
+
+    // Update + draw benign
+    for(let b of benignParticles){
+      b.x += (p.noise(b.x*0.003+frameCount_*0.002, b.y*0.003) - 0.5) * 0.6;
+      b.y += (p.noise(b.x*0.003, b.y*0.003+frameCount_*0.002+100) - 0.5) * 0.6;
+      b.x = p.constrain(b.x + driftOffset.x*0.15, 20, W-20);
+      b.y = p.constrain(b.y + driftOffset.y*0.15, 20, H-20);
+      let alpha = 0.55 + 0.15*p.sin(frameCount_*0.05 + b.phase);
+      p.fill(74, 144, 217, alpha);
+      p.noStroke();
+      p.ellipse(b.x, b.y, b.r*2, b.r*2);
+    }
+
+    // Update + draw malware
+    let evaded = 0;
+    for(let m of malwareParticles){
+      // Adversarial pressure: pull toward boundary
+      let nearest = nearestBoundary(m.x, m.y, W, H);
+      let dx = nearest.x - m.x, dy = nearest.y - m.y;
+      let dist = Math.sqrt(dx*dx+dy*dy) + 0.001;
+      let advForce = params.advStr * (1.0 / (1 + dist*0.06));
+      m.vx += (dx/dist) * advForce * 0.04;
+      m.vy += (dy/dist) * advForce * 0.04;
+      // Brownian + drift
+      m.vx += (p.noise(m.x*0.004+frameCount_*0.003, m.y*0.004+500) - 0.5) * 0.4;
+      m.vy += (p.noise(m.x*0.004+600, m.y*0.004+frameCount_*0.003+600) - 0.5) * 0.4;
+      m.vx += driftOffset.x * 0.012;
+      m.vy += driftOffset.y * 0.012;
+      // Damping
+      m.vx *= 0.88; m.vy *= 0.88;
+      m.x += m.vx; m.y += m.vy;
+      m.x = p.constrain(m.x, 20, W-20);
+      m.y = p.constrain(m.y, 20, H-20);
+
+      // Check if evaded (crossed to benign side)
+      let side = classifySide(m.x, m.y, W, H);
+      if(side < 0){
+        m.evading = Math.min(m.evading + 1, 40);
+        evaded++;
+        if(!m.wasEvading) { evasionCount++; m.wasEvading = true; }
+      } else {
+        m.evading = Math.max(m.evading - 2, 0);
+        m.wasEvading = false;
+      }
+
+      // Draw adversarial probe trail
+      if(m.evading > 0 || dist < 120){
+        let c = p.lerpColor(p.color(200,60,30,0.6), p.color(243,156,18,0.7), m.evading/40);
+        p.stroke(c); p.strokeWeight(0.8);
+        p.line(m.x, m.y, nearest.x, nearest.y);
+      }
+
+      let col = m.evading > 5
+        ? p.color(231,76,60, 0.85)
+        : p.color(192,57,43, 0.65 + 0.2*p.sin(frameCount_*0.07+m.phase));
+      p.noStroke(); p.fill(col);
+      p.ellipse(m.x, m.y, m.r*2, m.r*2);
+    }
+
+    // Adapt boundary toward evasion hotspots
+    adaptBoundary(W, H);
+
+    // Draw boundary
+    drawBoundary(p, W, H);
+
+    // Draw immune cells
+    for(let ic of immuneCells){
+      ic.angle += ic.spin;
+      ic.pulse += 0.05;
+      let px = ic.bx * W, py = ic.by * H;
+      drawImmuneCell(p, px, py, ic);
+    }
+
+    // Stats
+    if(frameCount_ % 30 === 0){
+      let evasionRate = malwareParticles.length > 0
+        ? (evaded / malwareParticles.length * 100).toFixed(1) : 0;
+      document.getElementById('stats').innerHTML =
+        `Evasion rate:   ${evasionRate}%\n` +
+        `Evasion events: ${evasionCount}\n` +
+        `Frame:          ${frameCount_}\n` +
+        `Drift offset:   (${driftOffset.x.toFixed(2)}, ${driftOffset.y.toFixed(2)})`;
+    }
+  };
+}, document.getElementById('canvas-container'));
+
+function drawGrid(p, W, H){
+  p.stroke(180,178,170,0.12); p.strokeWeight(0.5);
+  let step = 60;
+  for(let x=0; x<W; x+=step) p.line(x+driftOffset.x*2%step, 0, x+driftOffset.x*2%step, H);
+  for(let y=0; y<H; y+=step) p.line(0, y+driftOffset.y*2%step, W, y+driftOffset.y*2%step);
+}
+
+function drawBoundary(p, W, H){
+  if(boundaryPoints.length < 2) return;
+  p.noFill(); p.stroke(217, 119, 87, 0.7); p.strokeWeight(2.2);
+  p.beginShape();
+  for(let pt of boundaryPoints) p.vertex(pt.x*W, pt.y*H);
+  p.endShape();
+  // Glow
+  p.stroke(217, 119, 87, 0.15); p.strokeWeight(8);
+  p.beginShape();
+  for(let pt of boundaryPoints) p.vertex(pt.x*W, pt.y*H);
+  p.endShape();
+}
+
+function drawImmuneCell(p, cx, cy, ic){
+  p.push();
+  p.translate(cx, cy);
+  p.rotate(ic.angle);
+  let r = ic.radius * (1 + 0.08*Math.sin(ic.pulse));
+  // Outer ring
+  p.noFill(); p.stroke(217,119,87,0.5); p.strokeWeight(1.2);
+  p.ellipse(0,0,r*2.4,r*2.4);
+  // Spikes
+  p.stroke(217,119,87,0.3); p.strokeWeight(0.8);
+  let spikes = ic.spikes;
+  for(let i=0;i<spikes;i++){
+    let a = (i/spikes)*p.TWO_PI;
+    p.line(Math.cos(a)*r*0.7, Math.sin(a)*r*0.7, Math.cos(a)*r*1.3, Math.sin(a)*r*1.3);
+  }
+  // Core
+  p.fill(217,119,87,0.25); p.noStroke();
+  p.ellipse(0,0,r*1.2,r*1.2);
+  p.pop();
+}
+
+function nearestBoundary(px, py, W, H){
+  let best = null, bestD = Infinity;
+  for(let pt of boundaryPoints){
+    let bx = pt.x*W, by = pt.y*H;
+    let d = (px-bx)*(px-bx)+(py-by)*(py-by);
+    if(d < bestD){ bestD = d; best = {x:bx, y:by}; }
+  }
+  return best || {x:W/2, y:H/2};
+}
+
+function classifySide(px, py, W, H){
+  // Positive = malware side (right/below boundary), negative = evaded to benign
+  if(boundaryPoints.length < 2) return 1;
+  // Simple: project onto boundary normal at nearest point
+  let nb = nearestBoundary(px, py, W, H);
+  // Use x-component of drift-adjusted boundary center as separator
+  let centerX = boundaryPoints.reduce((s,p)=>s+p.x,0)/boundaryPoints.length * W;
+  return px - centerX;
+}
+
+function adaptBoundary(W, H){
+  let rate = params.adaptRate;
+  // Find malware evasion events and pull boundary toward them
+  for(let m of malwareParticles){
+    if(m.evading > 10){
+      // Nearest boundary point moves toward malware particle
+      let nb = nearestBoundary(m.x, m.y, W, H);
+      for(let pt of boundaryPoints){
+        let bx = pt.x*W, by = pt.y*H;
+        if(Math.abs(bx-nb.x)<2 && Math.abs(by-nb.y)<2){
+          pt.x += (m.x/W - pt.x) * rate * 0.15;
+          pt.y += (m.y/H - pt.y) * rate * 0.08;
+        }
+      }
+    }
+  }
+  // Smooth the boundary
+  for(let i=1;i<boundaryPoints.length-1;i++){
+    boundaryPoints[i].x += (boundaryPoints[i-1].x+boundaryPoints[i+1].x)/2 * 0.02 - boundaryPoints[i].x * 0.02;
+    boundaryPoints[i].y += (boundaryPoints[i-1].y+boundaryPoints[i+1].y)/2 * 0.02 - boundaryPoints[i].y * 0.02;
+  }
+  // Drift the boundary too (slightly less than particles - creates lag = TTT effect)
+  for(let pt of boundaryPoints){
+    pt.x += driftOffset.x * 0.0004 * params.adaptRate * 10;
+    pt.y += driftOffset.y * 0.0004 * params.adaptRate * 10;
+    pt.x = Math.max(0.05, Math.min(0.95, pt.x));
+    pt.y = Math.max(0.05, Math.min(0.95, pt.y));
+  }
+}
+
+function seededRand(seed){
+  let x = Math.sin(seed+1)*43758.5453123;
+  return x - Math.floor(x);
+}
+
+function reinit(){
+  malwareParticles = []; benignParticles = []; immuneCells = [];
+  boundaryPoints = []; driftOffset = {x:0,y:0};
+  evasionCount = 0; frameCount_ = 0;
+  let W = 720, H = 720;
+  let s = params.seed;
+
+  // Boundary: sigmoid-ish curve from top to bottom
+  let numBP = 12;
+  for(let i=0;i<numBP;i++){
+    let t = i/(numBP-1);
+    let bx = 0.42 + 0.12*Math.sin(t*Math.PI*1.5 + seededRand(s+i*7)*0.8 - 0.4);
+    boundaryPoints.push({x: bx, y: t});
+  }
+
+  // Benign particles (left of boundary)
+  let benCount = Math.round(params.malCount * 1.4);
+  for(let i=0;i<benCount;i++){
+    let si = s + i*13 + 1000;
+    let bx = (0.05 + seededRand(si)*0.30) * W;
+    let by = (0.05 + seededRand(si+1)*0.90) * H;
+    benignParticles.push({x:bx, y:by, r:2.5+seededRand(si+2)*2, phase:seededRand(si+3)*6.28});
+  }
+
+  // Malware particles (right of boundary)
+  for(let i=0;i<params.malCount;i++){
+    let si = s + i*17 + 2000;
+    let mx = (0.55 + seededRand(si)*0.38) * W;
+    let my = (0.05 + seededRand(si+1)*0.90) * H;
+    malwareParticles.push({x:mx, y:my, r:2.8+seededRand(si+2)*2.2,
+      vx:0, vy:0, evading:0, wasEvading:false, phase:seededRand(si+3)*6.28});
+  }
+
+  // Immune cells along boundary
+  let ic = params.immuneCount;
+  for(let i=0;i<ic;i++){
+    let si = s + i*23 + 3000;
+    let t = (i+0.5)/ic;
+    let bx = 0.42 + 0.12*Math.sin(t*Math.PI*1.5 - 0.4) + (seededRand(si)-0.5)*0.04;
+    immuneCells.push({
+      bx: bx, by: t + (seededRand(si+1)-0.5)*0.04,
+      radius: 10 + seededRand(si+2)*8,
+      angle: seededRand(si+3)*6.28,
+      spin: (seededRand(si+4)-0.5)*0.015,
+      pulse: seededRand(si+5)*6.28,
+      spikes: 6 + Math.floor(seededRand(si+6)*4)
+    });
+  }
+}
+
+function updateParam(name, val){
+  params[name] = val;
+  document.getElementById(name+'-v').textContent =
+    val.toFixed ? val.toFixed(val<1?2:0) : val;
+  if(name==='malCount' || name==='immuneCount') reinit();
+}
+
+function previousSeed(){ params.seed=Math.max(1,params.seed-1); updateSeedDisplay(); reinit(); }
+function nextSeed(){ params.seed++; updateSeedDisplay(); reinit(); }
+function randomSeedAndUpdate(){ params.seed=Math.floor(Math.random()*999999)+1; updateSeedDisplay(); reinit(); }
+function updateSeedDisplay(){ document.getElementById('seed-input').value=params.seed; }
+
+function resetParameters(){
+  params={...defaultParams};
+  document.getElementById('malCount').value=params.malCount;
+  document.getElementById('malCount-v').textContent=params.malCount;
+  document.getElementById('advStr').value=params.advStr;
+  document.getElementById('advStr-v').textContent=params.advStr.toFixed(2);
+  document.getElementById('driftSpd').value=params.driftSpd;
+  document.getElementById('driftSpd-v').textContent=params.driftSpd.toFixed(2);
+  document.getElementById('adaptRate').value=params.adaptRate;
+  document.getElementById('adaptRate-v').textContent=params.adaptRate.toFixed(2);
+  document.getElementById('immuneCount').value=params.immuneCount;
+  document.getElementById('immuneCount-v').textContent=params.immuneCount;
+  updateSeedDisplay(); reinit();
+}
+
+window.addEventListener('load', updateSeedDisplay);
+</script>
+<script>
+/* ===== ARMADA live bridge: drives this visualisation from the SIEM/SOAR server ===== */
+(function(){
+  const sec = document.createElement('div');
+  sec.className = 'control-section';
+  sec.innerHTML = '<h3>Live feed</h3><div class="stat-box" id="live-stat">connecting...</div>';
+  const all = document.querySelectorAll('.control-section');
+  const last = all[all.length-1];
+  last.parentNode.insertBefore(sec, last);
+  const ls = document.getElementById('live-stat');
+  if(location.protocol === 'file:'){
+    ls.innerHTML = 'Offline preview.<br>Open http://localhost:8000/immunity<br>for live data.';
+    return;
+  }
+  const W = 720, H = 720, rnd = (a,b)=>a+Math.random()*(b-a);
+  let lastTotal = null, lastMem = null, ripples = [], ticker = [];
+  const COL = {SAFE:[74,144,217], SUSPICIOUS:[243,156,18], MALWARE:[231,76,60]};
+
+  function bx(yFrac){
+    if(!boundaryPoints.length) return 0.45;
+    return boundaryPoints[Math.round(yFrac*(boundaryPoints.length-1))].x;
+  }
+  function ripple(x,y,c){ ripples.push({x:x,y:y,c:c,t:performance.now()}); }
+
+  function spawn(v){
+    if(v === 'SAFE'){
+      const o = {x:rnd(.05,.35)*W, y:rnd(.05,.95)*H, r:2.5+Math.random()*2, phase:Math.random()*6.28};
+      benignParticles.push(o);
+      if(benignParticles.length > 160) benignParticles.shift();
+      ripple(o.x,o.y,COL.SAFE);
+    } else {
+      const o = {x:rnd(.6,.93)*W, y:rnd(.05,.95)*H, r:3+Math.random()*2.2, vx:0, vy:0,
+                 evading:0, wasEvading:false, phase:Math.random()*6.28};
+      malwareParticles.push(o);
+      if(malwareParticles.length > 120) malwareParticles.shift();
+      ripple(o.x,o.y,COL[v]);
+      ripple(bx(o.y/H)*W, o.y, [217,119,87]);          // immune response at the boundary
+    }
+  }
+  function addImmune(){
+    if(immuneCells.length >= 40) return;
+    const t = Math.random();
+    immuneCells.push({bx:bx(t)+rnd(-.02,.02), by:t, radius:10+Math.random()*8, angle:Math.random()*6.28,
+                      spin:(Math.random()-.5)*.015, pulse:Math.random()*6.28, spikes:6+Math.floor(Math.random()*4)});
+    ripple(bx(t)*W, t*H, [217,119,87]);
+  }
+
+  async function poll(){
+    try{
+      const s = await (await fetch('/api/state')).json();
+      if(lastTotal === null){ lastTotal = s.total; lastMem = s.memory; }
+      if(s.total < lastTotal) lastTotal = s.total;           // demo was reset
+      const n = Math.min(s.total - lastTotal, s.events.length, 12);
+      for(let i=n-1;i>=0;i--){                               // events arrive newest-first
+        const e = s.events[i];
+        spawn(e.verdict);
+        if(e.verdict !== 'SAFE') ticker.unshift({txt:(e.verdict+'  '+e.host+'  '+e.name).slice(0,60), c:COL[e.verdict], t:performance.now()});
+      }
+      lastTotal = s.total;
+      ticker = ticker.slice(0,6);
+      if(s.memory > lastMem){ for(let k=0;k<Math.min(s.memory-lastMem,6);k++) addImmune(); }
+      lastMem = s.memory;
+      const v = s.verdicts || {};
+      const on = s.devices.filter(d=>d.online).length;
+      ls.innerHTML = 'Devices online: '+on+' / '+s.devices.length+'<br>Events:  '+s.total+
+        '<br>Safe:    '+(v.SAFE||0)+'<br>Suspicious: '+(v.SUSPICIOUS||0)+'<br>Malware: '+(v.MALWARE||0)+
+        '<br>Memory fingerprints: '+s.memory+'<br><span style="color:#b0aea5">particles = live events<br>immune cells = baseline + memory<br>motion = illustrative</span>';
+    }catch(e){ ls.textContent = 'server not reachable'; }
+  }
+
+  function overlay(p){
+    const now = performance.now();
+    ripples = ripples.filter(r => now - r.t < 1200);
+    p.noFill();
+    for(const r of ripples){
+      const k = (now - r.t) / 1200;
+      p.stroke(r.c[0], r.c[1], r.c[2], 0.8*(1-k)); p.strokeWeight(2);
+      p.ellipse(r.x, r.y, 10+k*70, 10+k*70);
+    }
+    ticker = ticker.filter(t => now - t.t < 12000);
+    p.noStroke(); p.textFont('monospace'); p.textSize(12); p.textAlign(p.LEFT, p.BASELINE);
+    ticker.forEach((t,i)=>{ p.fill(t.c[0], t.c[1], t.c[2], 1-(now-t.t)/12000); p.text(t.txt, 16, H-16-i*16); });
+  }
+  const od = p5inst.draw;
+  p5inst.draw = function(){ od.apply(this, arguments); overlay(p5inst); };
+  setInterval(poll, 1000); poll();
+})();
+</script>
+</body>
+</html>
