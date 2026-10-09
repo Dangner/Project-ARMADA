@@ -1,0 +1,26 @@
+# Large data artifacts (EMBER corpus, caches, checkpoints) stay out of git.
+data/
+cache/
+checkpoints/
+*.dat
+*.memmap
+
+# Runtime logs (per-run logs are noisy; curated logs under logs/summary stay)
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Prediction dumps (large .npy); metrics CSVs in results/ are kept.
+results/predictions/
+
+# OS noise
+.DS_Store
+Zone.Identifier

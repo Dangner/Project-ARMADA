@@ -1,0 +1,19 @@
+# ARMADA — pinned for reproducibility (Python 3.10+; tested on CPython 3.11).
+# CPU-first: plain `torch` install works without CUDA; CUDA is auto-detected
+# and never required.
+numpy==1.26.4
+pandas==2.2.2
+scikit-learn==1.4.2
+matplotlib==3.8.4
+pyyaml==6.0.1
+torch==2.2.2
+tqdm==4.66.4
+
+# Development / test
+pytest==8.2.2
+
+# Optional, used ONLY by the one-time EMBER vectorisation step
+# (python -m armada.data.vectorize). Not needed to run experiments on
+# already-vectorised X_train.dat / y_train.dat / metadata.csv.
+#   ember @ git+https://github.com/elastic/ember.git
+#   lief==0.12.3

@@ -1,0 +1,117 @@
+# ARMADA fast smoke configuration: small caps, few epochs, minutes on CPU.
+# Used by `python -m armada.run --config configs/fast.yaml --stage ...` and --fast.
+# NOT for reported numbers.
+
+seed_list: [0]
+device: auto
+
+data:
+  data_dir: data/ember2018
+  cache_dir: cache
+  checkpoints_dir: checkpoints
+  results_dir: results
+  figures_dir: figures
+  tables_dir: tables
+  logs_dir: logs
+  include_test_subset: true
+  n_train: 4000
+  n_val: 800
+  n_per_window: 1500
+  n_unlabeled_per_window: 1500
+  keep_float32: true
+  sentinel_value: -1.0
+
+split:
+  mode: auto
+  source_fraction: 0.5
+  source_end_month: null
+  n_target_windows: 3
+  val_fraction: 0.1
+
+model:
+  d_model: 32
+  n_heads: 4
+  n_layers: 1
+  dropout: 0.1
+  cls_hidden: 64
+  emb_dim: 32
+  shared_group_projection: false
+  use_cls_token: true
+
+train:
+  stage_a_epochs: 2
+  stage_b_epochs: 2
+  batch_size: 128
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  grad_clip: 5.0
+  scheduler: cosine
+  early_stopping_patience: 2
+  cls_weight: 1.0
+  class_weights: balanced
+  marg_weight: 0.5
+  cond_weight: 0.5
+  recon_weight: 0.5
+  adv_weight: 1.0
+  grl_gamma: 10.0
+  use_d2: true
+  use_adversarial_training: false
+  use_ttt_objective: true
+  entropy_conditioning: false
+  amp: false
+
+ttt:
+  enabled: true
+  steps: 2
+  lr: 1.0e-4
+  mask_ratio: 0.3
+  online: false
+  report_online: true
+
+memory:
+  enabled: true
+  capacity: 512
+  add_confidence: 0.95
+  evict: age
+  max_age_windows: 3
+  store_benign: true
+
+decision:
+  malware_fpr_target: 0.001
+  suspicious_fpr_target: 0.05
+  calibrator: logistic
+
+robustness:
+  enabled: true
+  fgsm_epsilon: 0.05
+  pgd_epsilon: 0.05
+  pgd_steps: 3
+  pgd_step_size: 0.01
+  eval_epsilons: [0.0, 0.05]
+  clip_min: 0.0
+  clip_max: null
+
+baselines:
+  models: [LR, RF]
+  lr_max_iter: 500
+  lr_C: 1.0
+  lr_class_weight: balanced
+  rf_n_estimators: 50
+  rf_max_depth: 12
+  rf_min_samples_leaf: 2
+  rf_n_jobs: -1
+  rf_class_weight: balanced_subsample
+
+eval:
+  threshold: 0.5
+  fixed_fprs: [0.001, 0.01]
+  ece_bins: 10
+  n_bootstrap: 200
+  significance_alpha: 0.05
+
+scale_study:
+  n_train_values: [4000]
+
+figures:
+  dpi: 150
+  formats: [png]
