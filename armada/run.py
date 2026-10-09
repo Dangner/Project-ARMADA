@@ -25,7 +25,6 @@ logger = logging.getLogger("armada")
 STAGES = ("data", "train", "eval", "ablate", "robust", "figures", "all")
 PHASE_OF_STAGE = {
     "ablate": "Phase 6 (ablations)",
-    "robust": "Phase 4 (adversarial training & robustness)",
     "figures": "Phase 7 (figures, tables, REPORT.md)",
 }
 
@@ -290,6 +289,93 @@ def stage_eval(cfg: Mapping) -> None:
     log_peak_memory("eval")
 
 
+def stage_robust(cfg: Mapping) -> None:
+    """Robustness evaluation: clean vs FGSM/PGD/noise at several epsilons
+    (spec §3.6, Phase 4).  Feature-space attacks, EMBER-constrained."""
+    import pandas as pd
+
+    from armada.attacks import FeatureSpaceProjector  # noqa: F401  (documents intent)
+    from armada.eval.baselines import ResultsWriter
+    from armada.eval.neural import evaluate_stage_b_seed  # noqa: F401
+    from armada.eval.robustness import evaluate_robustness_seed
+    from armada.models.ttt import TTTAdapter
+    from armada.train.adapt import load_stage_b
+    from armada.train.pretrain import load_checkpoint
+    from armada.utils import get_device
+
+    t0 = time.perf_counter()
+    results_dir = Path(cfg["data"]["results_dir"])
+    results_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_dir = Path(cfg["data"].get("checkpoints_dir", "checkpoints"))
+    device = get_device(cfg)
+
+    datasets = _load_or_build_datasets(cfg)
+    all_rows: List[Dict[str, object]] = []
+    for seed, ds in datasets.items():
+        writer = ResultsWriter(results_dir, ds.provenance)
+
+        # 1) source-only grouped attention
+        ckpt_a = ckpt_dir / f"armada_stageA_seed{seed}.pt"
+        if ckpt_a.exists():
+            model_a, _ = load_checkpoint(ckpt_a, device=device)
+            all_rows.extend(
+                evaluate_robustness_seed("GroupedAttn", model_a, ds, cfg, writer, device)
+            )
+        else:
+            logger.warning("robust: missing %s — skipping GroupedAttn", ckpt_a)
+
+        # 2) Stage B variants
+        for variant, method, with_ttt in (
+            ("dann", "DANN", False),
+            ("dual", "DualDANN", False),
+            ("dual", "DualDANN+TTT", True),
+        ):
+            ckpt_b = ckpt_dir / f"armada_stageB_{variant}_seed{seed}.pt"
+            if not ckpt_b.exists():
+                logger.warning("robust: missing %s — skipping %s", ckpt_b, method)
+                continue
+            model_b, _ = load_stage_b(ckpt_b, device=device)
+            prepare_fn = None
+            if with_ttt and cfg.get("ttt", {}).get("enabled", True):
+                tcfg = cfg.get("ttt", {})
+                adapter = TTTAdapter(
+                    model_b,
+                    lr=float(tcfg.get("lr", 1e-4)),
+                    steps=int(tcfg.get("steps", 5)),
+                    mask_ratio=float(tcfg.get("mask_ratio", 0.3)),
+                    online=bool(tcfg.get("online", False)),
+                )
+
+                def prepare_fn(model, w, adapter=adapter, batch_size=None):  # noqa: E306
+                    if not adapter.online:
+                        adapter.reset()
+                    unl = w.get("unl_proc") or {}
+                    if unl and len(next(iter(unl.values()))):
+                        adapter.adapt(unl, batch_size=int(cfg["train"].get("batch_size", 256)))
+
+            all_rows.extend(
+                evaluate_robustness_seed(
+                    method, model_b, ds, cfg, writer, device, prepare_fn=prepare_fn
+                )
+            )
+
+    if not all_rows:
+        raise RuntimeError("robust stage produced no rows: train checkpoints first")
+
+    df = pd.DataFrame(all_rows)
+    out = results_dir / "robustness.csv"
+    df.to_csv(out, index=False)
+    logger.info("wrote %s (%d rows)", out, len(df))
+    summary = (
+        df.groupby(["method", "attack", "epsilon"], sort=True)[["accuracy", "auc_roc"]]
+        .agg(["mean", "std"])
+        .reset_index()
+    )
+    logger.info("robustness summary (mean over windows/seeds):\n%s", summary.to_string(index=False))
+    logger.info("robust stage finished in %.1fs", time.perf_counter() - t0)
+    log_peak_memory("robust")
+
+
 def stage_unavailable(cfg: Mapping, stage: str) -> None:
     raise NotImplementedError(
         f"--stage {stage} is delivered in {PHASE_OF_STAGE.get(stage, 'a later phase')}. "
@@ -342,6 +428,8 @@ def main(argv=None) -> int:
                 stage_train(cfg)
             elif stage == "eval":
                 stage_eval(cfg)
+            elif stage == "robust":
+                stage_robust(cfg)
             else:
                 stage_unavailable(cfg, stage)
         except MemoryError as exc:

@@ -53,6 +53,7 @@ train:
   cond_weight: 0.5
   recon_weight: 0.5
   adv_weight: 1.0
+  adv_attack: fgsm
   grl_gamma: 10.0
   use_d2: true
   use_adversarial_training: false

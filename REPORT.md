@@ -92,3 +92,44 @@
   (variants, curves, checkpoint reload), full train→eval pipeline rows.
 - Real-data numbers: same status as Phase 1-2 (EMBER corpus unavailable in
   the development sandbox); nothing is fabricated.
+
+# Phase 4 — adversarial training + robustness shield
+
+- Implemented:
+  - `attacks/constraints.py`: `FeatureSpaceProjector` — attacks act on the
+    model's processed inputs and are projected back onto the EMBER-feasible
+    region after every step: count-like features non-negative
+    (`robustness.clip_min`), per-column upper bound = source-period max
+    (source-only, leakage rule), missingness frozen (the adversary cannot
+    flip feature presence).  Upper bounds extend to `max(source_max, clean)`
+    so clean rows are always feasible.
+  - `attacks/fgsm.py` / `attacks/pgd.py`: one-step signed gradient and
+    iterative PGD (configurable eps/step size/steps, seeded random start),
+    both l∞-ball bounded and projected.
+  - Adversarial training in Stage B (toggle `train.use_adversarial_training`,
+    `train.adv_attack: fgsm|pgd`, weight `train.adv_weight`): classification
+    loss on FGSM/PGD examples of the labeled source batch, curves gain a
+    `train_adv` component.  Off by default (component toggles per spec §5).
+  - `eval/robustness.py` + `--stage robust`: clean vs FGSM/PGD at every
+    `robustness.eval_epsilons`, plus a random-noise baseline (MalGAN-style
+    generator attack not implemented — it was an optional item).  Rows for
+    `GroupedAttn`, `DANN`, `DualDANN`, `DualDANN+TTT` (TTT runs before
+    attacking) → `results/robustness.csv`, all metrics recomputed from saved
+    predictions.
+- Limitation (also in README §Limitations): feature-space perturbations are
+  **not** guaranteed to correspond to valid PE executables; robustness
+  numbers measure the model in feature space only.
+- Exact commands to reproduce:
+
+  ```bash
+  python -m armada.run --config configs/main.yaml --stage data
+  python -m armada.run --config configs/main.yaml --stage train
+  python -m armada.run --config configs/main.yaml --stage robust
+  python -m pytest tests/ -q
+  ```
+
+- Tests (110 total): l∞ ball containment, constraint projection (non-negative
+  counts, source-max clamp, frozen missingness, zero-eps identity, seeded PGD
+  determinism, 1-step PGD ≡ FGSM), Stage B adversarial-loss component on/off,
+  robustness CSV end-to-end.
+- Real-data numbers: still pending the EMBER corpus; nothing fabricated.

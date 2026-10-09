@@ -16,7 +16,7 @@ calibrated three-way decision engine.
 | 1 | repo structure, data pipeline, drift split, tests, LR/RF baselines | **implemented** (`armada/data`, `armada/eval`, `tests/`) |
 | 2 | Threat Profiler + grouped self-attention + classifier | **implemented** (`armada/models`, `armada/train/pretrain.py`, `--stage train`) |
 | 3 | dual-discriminator DANN + TTT | **implemented** (`grl.py`, `discriminators.py`, `ttt.py`, `train/adapt.py`) |
-| 4 | adversarial training + robustness evaluation | planned |
+| 4 | adversarial training + robustness evaluation | **implemented** (`armada/attacks`, `eval/robustness.py`, `--stage robust`) |
 | 5 | immune memory + calibrated decision engine | planned |
 | 6 | full baselines, ablations, scale study, significance tests | planned |
 | 7 | figures, tables, REPORT.md, GUI update | planned |

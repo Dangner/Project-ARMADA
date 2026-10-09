@@ -112,3 +112,27 @@ def test_phase3_full_loop_includes_dann_and_ttt_rows(fixture_cfg, tmp_path):
     # TTT runs on every window that has unlabeled rows (fixture T2 has none);
     # at least one window must have been adapted on.
     assert (ttt_rows["ttt_steps"] >= 1).any()
+
+
+def test_phase4_robust_stage_end_to_end(fixture_cfg, tmp_path):
+    """--stage robust writes results/robustness.csv with clean + attacked rows."""
+    from armada.run import stage_data, stage_robust, stage_train
+
+    fixture_cfg["train"] = dict(fixture_cfg["train"], stage_a_epochs=1, stage_b_epochs=1, batch_size=64)
+    fixture_cfg["ttt"] = {"enabled": True, "steps": 1, "lr": 1e-3, "mask_ratio": 0.3}
+    fixture_cfg["robustness"] = {
+        "eval_epsilons": [0.0, 0.1],
+        "pgd_steps": 2,
+        "pgd_step_size": 0.05,
+        "clip_min": 0.0,
+    }
+    stage_data(fixture_cfg)
+    stage_train(fixture_cfg)
+    stage_robust(fixture_cfg)
+
+    results = Path(fixture_cfg["data"]["results_dir"])
+    rob = pd.read_csv(results / "robustness.csv")
+    assert {"GroupedAttn", "DANN", "DualDANN", "DualDANN+TTT"} == set(rob["method"])
+    assert {"clean", "fgsm", "pgd", "noise"} == set(rob["attack"])
+    assert (rob["epsilon"] == 0.0).any()
+    assert set(rob["seed"]) == {0, 1}

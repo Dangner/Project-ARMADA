@@ -55,6 +55,7 @@ train:
   cond_weight: 0.5            # D2 (class-conditional discriminator) loss weight
   recon_weight: 0.5           # masked-reconstruction loss weight
   adv_weight: 1.0             # FGSM/PGD adversarial-training weight (stage B)
+  adv_attack: fgsm            # fgsm | pgd (adversarial training attack)
   grl_gamma: 10.0             # lambda(p) = 2/(1+exp(-gamma*p)) - 1
   use_d2: true
   use_adversarial_training: false   # toggled component (phase 4)

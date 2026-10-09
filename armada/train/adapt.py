@@ -57,6 +57,34 @@ def _stack_batches(
     }
 
 
+def _craft_adversarial(
+    model,
+    src_groups,
+    y_batch,
+    attack: str,
+    eps: float,
+    pgd_steps: int,
+    pgd_step_size: float,
+    projector,
+    clip_min: float,
+):
+    """Craft FGSM/PGD examples of the source batch (feature-space, constrained)."""
+    from ..attacks import fgsm_attack, pgd_attack
+
+    if attack == "pgd":
+        return pgd_attack(
+            model,
+            src_groups,
+            y_batch,
+            eps,
+            step_size=pgd_step_size,
+            steps=pgd_steps,
+            projector=projector,
+            clip_min=clip_min,
+        )
+    return fgsm_attack(model, src_groups, y_batch, eps, projector, clip_min)
+
+
 def _target_pool(ds: SeedDataset) -> Dict[str, np.ndarray]:
     """Concatenate processed unlabeled rows from every target window."""
     parts = []
@@ -144,6 +172,33 @@ def train_stage_b(
     src_batcher = _GroupBatcher(ds.source_train_proc, ds.source_train_y, batch_size, device)
     rng = torch.Generator(device="cpu").manual_seed(ds.seed)
 
+    # Optional adversarial training (Phase 4): FGSM/PGD on the source batch,
+    # constrained to the EMBER-feasible feature region (feature-space only).
+    use_adv = bool(tcfg.get("use_adversarial_training", False))
+    adv_weight = float(tcfg.get("adv_weight", 1.0))
+    adv_attack = str(tcfg.get("adv_attack", "fgsm")).lower()
+    rcfg = cfg.get("robustness", {})
+    adv_eps = float(rcfg.get("fgsm_epsilon", 0.05)) if adv_attack == "fgsm" else float(
+        rcfg.get("pgd_epsilon", 0.05)
+    )
+    adv_pgd_steps = int(rcfg.get("pgd_steps", 7))
+    adv_pgd_step = float(rcfg.get("pgd_step_size", 0.01))
+    clip_min = float(rcfg.get("clip_min", 0.0))
+    projector = None
+    if use_adv:
+        from ..attacks import FeatureSpaceProjector
+
+        projector = FeatureSpaceProjector(
+            ds.preprocessor, ds.source_train_raw, device=device
+        )
+        logger.info(
+            "adversarial training ENABLED: attack=%s eps=%.3f weight=%.2f "
+            "(feature-space, EMBER-constrained)",
+            adv_attack,
+            adv_eps,
+            adv_weight,
+        )
+
     curves: List[Dict[str, float]] = []
     best_val_auc = -float("inf")
     best_epoch = -1
@@ -156,7 +211,7 @@ def train_stage_b(
     for epoch in tqdm(range(epochs), desc=f"Stage B/{variant} (seed {ds.seed})", leave=False):
         model.train()
         t0 = time.perf_counter()
-        sums = {"cls": 0.0, "marg": 0.0, "cond": 0.0, "recon": 0.0, "total": 0.0}
+        sums = {"cls": 0.0, "marg": 0.0, "cond": 0.0, "recon": 0.0, "adv": 0.0, "total": 0.0}
         n_batches = 0
         for src_groups, y_batch in src_batcher.epoch_batches(rng):
             t_idx = torch.randperm(n_tgt).numpy()[:batch_size]
@@ -195,11 +250,31 @@ def train_stage_b(
                 else:
                     recon_loss = cls_loss.new_zeros(())
 
+                if use_adv and adv_weight > 0:
+                    adv_groups = _craft_adversarial(
+                        model,
+                        src_groups,
+                        y_batch,
+                        attack=adv_attack,
+                        eps=adv_eps,
+                        pgd_steps=adv_pgd_steps,
+                        pgd_step_size=adv_pgd_step,
+                        projector=projector,
+                        clip_min=clip_min,
+                    )
+                    z_adv, _ = model.embed(adv_groups)
+                    adv_loss = classification_loss(
+                        model.classifier(z_adv), y_batch, pos_weight=pos_weight
+                    )
+                else:
+                    adv_loss = cls_loss.new_zeros(())
+
                 total = (
                     float(tcfg.get("cls_weight", 1.0)) * cls_loss
                     + float(tcfg.get("marg_weight", 0.5)) * marg_loss
                     + float(tcfg.get("cond_weight", 0.5)) * cond_loss
                     + recon_weight * recon_loss
+                    + (adv_weight * adv_loss if use_adv else 0.0)
                 )
             if not torch.isfinite(total):
                 raise RuntimeError(
@@ -218,6 +293,7 @@ def train_stage_b(
             sums["marg"] += float(marg_loss.item())
             sums["cond"] += float(cond_loss.item()) if torch.is_tensor(cond_loss) else float(cond_loss)
             sums["recon"] += float(recon_loss.item()) if torch.is_tensor(recon_loss) else float(recon_loss)
+            sums["adv"] += float(adv_loss.item()) if torch.is_tensor(adv_loss) else float(adv_loss)
             sums["total"] += float(total.item())
             n_batches += 1
             global_step += 1
@@ -231,6 +307,7 @@ def train_stage_b(
             "train_marg": sums["marg"] / max(1, n_batches),
             "train_cond": sums["cond"] / max(1, n_batches),
             "train_recon": sums["recon"] / max(1, n_batches),
+            "train_adv": sums["adv"] / max(1, n_batches),
             "train_total": sums["total"] / max(1, n_batches),
             "val_bce": val["bce"],
             "val_auc": val["auc"],
