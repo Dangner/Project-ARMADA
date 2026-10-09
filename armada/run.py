@@ -181,7 +181,7 @@ def stage_eval(cfg: Mapping) -> None:
         run_baseline_seed,
         summarise,
     )
-    from armada.eval.neural import evaluate_model_seed, evaluate_stage_b_seed
+    from armada.eval.neural import evaluate_armada_seed, evaluate_model_seed, evaluate_stage_b_seed
 
     t0 = time.perf_counter()
     results_dir = Path(cfg["data"]["results_dir"])
@@ -193,6 +193,7 @@ def stage_eval(cfg: Mapping) -> None:
     logger.info("eval stage: baselines=%s", models)
 
     all_rows: List[Dict[str, object]] = []
+    all_decision_rows: List[Dict[str, object]] = []
     for seed, ds in datasets.items():
         writer = ResultsWriter(results_dir, ds.provenance)
         windows = [(w["name"], w["raw"], w["y"]) for w in ds.windows if len(w["y"])]
@@ -255,6 +256,29 @@ def stage_eval(cfg: Mapping) -> None:
             )
             all_rows.extend(rows)
 
+        # Phase 5: full ARMADA (memory + learned calibrator + decision engine)
+        # and its no-memory counterpart ("evaluate with and without memory").
+        ckpt_dual = ckpt_dir / f"armada_stageB_dual_seed{seed}.pt"
+        if ckpt_dual.exists():
+            decision_rows: List[Dict[str, object]] = []
+            for method, use_memory in (("ARMADA", True), ("ARMADA-noMem", False)):
+                rows, dec = evaluate_armada_seed(
+                    method=method,
+                    checkpoint_path=ckpt_dual,
+                    ds=ds,
+                    cfg=cfg,
+                    writer=writer,
+                    use_memory=use_memory,
+                    use_ttt=bool(cfg.get("ttt", {}).get("enabled", True)),
+                )
+                all_rows.extend(rows)
+                decision_rows.extend(dec)
+            all_decision_rows.extend(decision_rows)
+        else:
+            logger.warning(
+                "no checkpoint %s — skipping ARMADA/ARMADA-noMem rows", ckpt_dual
+            )
+
     if not all_rows:
         raise RuntimeError("eval produced no rows: check window configuration")
 
@@ -268,6 +292,12 @@ def stage_eval(cfg: Mapping) -> None:
     win_df.to_csv(results_dir / "metrics_by_window.csv", index=False)
     all_df = pd.DataFrame(overall)
     all_df.to_csv(results_dir / "metrics_all.csv", index=False)
+
+    if all_decision_rows:
+        dec_df = pd.DataFrame(all_decision_rows)
+        dec_path = results_dir / "decision_report.csv"
+        dec_df.to_csv(dec_path, index=False)
+        logger.info("wrote %s (%d rows)", dec_path, len(dec_df))
 
     logger.info("wrote %s (%d rows)", raw_path, len(raw_df))
     logger.info("wrote %s (%d rows)", results_dir / "metrics_by_window.csv", len(win_df))

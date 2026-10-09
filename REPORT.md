@@ -133,3 +133,47 @@
   determinism, 1-step PGD ≡ FGSM), Stage B adversarial-loss component on/off,
   robustness CSV end-to-end.
 - Real-data numbers: still pending the EMBER corpus; nothing fabricated.
+
+# Phase 5 — immune memory + calibrated decision engine
+
+- Implemented:
+  - `models/memory.py`: `MemoryBank` — fixed-size numpy cosine nearest-neighbour
+    store of embeddings (malware + optional benign), age/LRU eviction with
+    capacity enforcement, high-confidence window-update rule
+    (`memory.add_confidence`); `MemoryCalibrator` — **learned** logistic
+    regression on `[P(malware), max_sim_to_malware_memory]`, fit on the
+    **source validation split only** (never hand-set weights).
+  - `models/decision.py`: `DecisionEngine` — SAFE/SUSPICIOUS/MALWARE from two
+    data-derived thresholds: MALWARE at FPR ≤ `decision.malware_fpr_target`
+    (0.1 %), SUSPICIOUS at the lower threshold (FPR ≤ 5 %), both selected on
+    source validation scores only (no hardcoded 30/60).  Reports the 2-class
+    confusion (MALWARE-as-positive and alert-as-positive), verdict counts and
+    the SUSPICIOUS routing ("sandbox") rate.
+  - `eval/neural.py:evaluate_armada_seed` — full deployment order per seed:
+    initial memory from source-train confirmed labels → calibrator + thresholds
+    on source-val → chronological windows (TTT reset+adapt on unlabeled rows,
+    calibrated scores, verdicts, then memory updated with high-confidence
+    detections; age clock advances per window).
+  - Method rows: **`ARMADA`** (dual-disc + TTT + memory + calibrator + decision)
+    and **`ARMADA-noMem`** (calibrator on the classifier probability only) —
+    this pair *is* the required "evaluate with and without memory".
+    `results/decision_report.csv` carries verdict counts, sandbox rates,
+    confusion counts and the chosen thresholds per window.
+- Assumptions stated: (1) memory stores source-model embedding signatures —
+  TTT shifts the encoder slightly per window and similarities are computed in
+  the adapted space (documented approximation); (2) calibrator and thresholds
+  share the source validation split (both are source-only; noted in REPORT).
+- Exact commands to reproduce:
+
+  ```bash
+  python -m armada.run --config configs/main.yaml --stage data
+  python -m armada.run --config configs/main.yaml --stage train
+  python -m armada.run --config configs/main.yaml --stage eval    # includes ARMADA / ARMADA-noMem
+  python -m pytest tests/ -q
+  ```
+
+- Tests (129 total): memory cosine/capacity/age/LRU/update-rule, calibrator
+  learned weights + no-memory ablation, threshold FPR budgets on source-val,
+  data-derived (non-hardcoded) thresholds, verdict partition, confusion and
+  sandbox-rate accounting, pipeline end-to-end with `decision_report.csv`.
+- Real-data numbers: still pending the EMBER corpus; nothing fabricated.

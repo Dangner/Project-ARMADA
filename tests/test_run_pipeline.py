@@ -104,7 +104,10 @@ def test_phase3_full_loop_includes_dann_and_ttt_rows(fixture_cfg, tmp_path):
     stage_eval(fixture_cfg)
     results = Path(fixture_cfg["data"]["results_dir"])
     overall = pd.read_csv(results / "metrics_all.csv")
-    expected = {"LR", "RF", "GroupedAttn", "DANN", "DualDANN", "DualDANN+TTT", "DualDANN+TTT-online"}
+    expected = {
+        "LR", "RF", "GroupedAttn", "DANN", "DualDANN", "DualDANN+TTT", "DualDANN+TTT-online",
+        "ARMADA", "ARMADA-noMem",
+    }
     assert expected == set(overall["method"])
 
     per_seed = pd.read_csv(results / "metrics_per_seed.csv")
@@ -136,3 +139,51 @@ def test_phase4_robust_stage_end_to_end(fixture_cfg, tmp_path):
     assert {"clean", "fgsm", "pgd", "noise"} == set(rob["attack"])
     assert (rob["epsilon"] == 0.0).any()
     assert set(rob["seed"]) == {0, 1}
+
+
+def test_phase5_armada_rows_and_decision_report(fixture_cfg, tmp_path):
+    """Full ARMADA (memory + calibrator + decision) rows and the decision report."""
+    from armada.run import stage_data, stage_eval, stage_train
+
+    fixture_cfg["train"] = dict(fixture_cfg["train"], stage_a_epochs=1, stage_b_epochs=1, batch_size=64)
+    fixture_cfg["ttt"] = {"enabled": True, "steps": 1, "lr": 1e-3, "mask_ratio": 0.3}
+    fixture_cfg["memory"] = {
+        "capacity": 256,
+        "store_benign": True,
+        "evict": "age",
+        "max_age_windows": 3,
+        "add_confidence": 0.9,
+    }
+    fixture_cfg["decision"] = {
+        "malware_fpr_target": 0.05,
+        "suspicious_fpr_target": 0.2,
+        "calibrator": "logistic",
+    }
+    stage_data(fixture_cfg)
+    stage_train(fixture_cfg)
+    stage_eval(fixture_cfg)
+
+    results = Path(fixture_cfg["data"]["results_dir"])
+    overall = pd.read_csv(results / "metrics_all.csv")
+    assert {"ARMADA", "ARMADA-noMem"} <= set(overall["method"])
+
+    dec = pd.read_csv(results / "decision_report.csv")
+    assert {"ARMADA", "ARMADA-noMem"} == set(dec["method"])
+    for col in (
+        "n_safe",
+        "n_suspicious",
+        "n_malware",
+        "sandbox_rate",
+        "conf_tp",
+        "conf_fp",
+        "conf_tn",
+        "conf_fn",
+        "malware_threshold",
+        "suspicious_threshold",
+    ):
+        assert col in dec.columns
+    # verdict counts add up to the window size
+    assert (dec["n_safe"] + dec["n_suspicious"] + dec["n_malware"] == dec["n"]).all()
+    # thresholds are recorded per row and are data-derived (finite)
+    assert np.isfinite(dec["malware_threshold"]).all()
+    assert (dec["malware_threshold"] >= dec["suspicious_threshold"]).all()
