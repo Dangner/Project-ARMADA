@@ -203,6 +203,69 @@ def run_baseline_seed(
     return rows
 
 
+def _feature_matrix(proc: Mapping[str, np.ndarray], group_dims: Mapping[str, int]) -> np.ndarray:
+    """Flatten processed groups in deterministic (sorted) order."""
+    names = sorted(group_dims)
+    return np.concatenate([np.asarray(proc[n], dtype=np.float32) for n in names], axis=1)
+
+
+def run_plain_mlp(
+    ds: "SeedDataset",
+    cfg: Mapping,
+    writer: "ResultsWriter",
+    seed: int,
+) -> List[Dict[str, object]]:
+    """Plain MLP baseline on concatenated standardised features (spec §3.4)."""
+    from sklearn.neural_network import MLPClassifier
+
+    b = cfg.get("baselines", {})
+    if not b.get("plain_mlp_enabled", False):
+        raise RuntimeError("run_plain_mlp: baselines.plain_mlp_enabled is false")
+    clf = MLPClassifier(
+        hidden_layer_sizes=tuple(b.get("plain_mlp_hidden", [256, 128])),
+        activation="relu",
+        max_iter=int(b.get("plain_mlp_max_iter", 300)),
+        early_stopping=True,
+        n_iter_no_change=10,
+        batch_size=min(256, max(32, int(cfg["train"].get("batch_size", 256)))),
+        random_state=seed,
+        learning_rate_init=float(b.get("plain_mlp_lr", 1e-3)),
+    )
+    ds.ensure_processed()
+    names = sorted(ds.source_train_proc)
+    X = np.concatenate([ds.source_train_proc[n] for n in names], axis=1)
+    y = ds.source_train_y
+    t0 = time.perf_counter()
+    clf.fit(X, y)
+    fit_s = time.perf_counter() - t0
+    logger.info("PlainMLP seed=%d fitted on %s in %.1fs", seed, X.shape, fit_s)
+
+    rows: List[Dict[str, object]] = []
+    for w in ds.windows:
+        y_true = np.asarray(w["y"])
+        if len(y_true) == 0:
+            continue
+        Xw = np.concatenate([w["proc"][n] for n in names], axis=1)
+        y_prob = clf.predict_proba(Xw)[:, list(clf.classes_).index(1)]
+        writer.save_predictions("PlainMLP", seed, w["name"], y_true, y_prob)
+        m = metrics_from_saved_predictions(
+            writer.results_dir / "predictions" / f"PlainMLP_seed{seed}_{w['name']}.npz"
+        )
+        row: Dict[str, object] = {
+            "method": "PlainMLP",
+            "seed": seed,
+            "window": w["name"],
+            "fit_seconds": fit_s,
+            "ttt_steps": 0,
+        }
+        row.update(m)
+        rows.append(row)
+        logger.info(
+            "PlainMLP seed=%d %s acc=%.4f auc_roc=%.4f", seed, w["name"], m["accuracy"], m["auc_roc"]
+        )
+    return rows
+
+
 def summarise(rows: Sequence[Mapping[str, object]]) -> Tuple[List[Dict], List[Dict]]:
     """Per-window mean±std over seeds and overall (windows averaged) mean±std."""
     by_window = aggregate_mean_std(rows, group_keys=("method", "window"))

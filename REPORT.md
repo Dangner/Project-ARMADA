@@ -177,3 +177,42 @@
   data-derived (non-hardcoded) thresholds, verdict partition, confusion and
   sandbox-rate accounting, pipeline end-to-end with `decision_report.csv`.
 - Real-data numbers: still pending the EMBER corpus; nothing fabricated.
+
+# Phase 6 — full baselines, ablations, scale study, significance
+
+- Implemented:
+  - **PlainMLP baseline** (`eval/baselines.py:run_plain_mlp`): sklearn
+    MLPClassifier (256-128) on concatenated standardised features; joins the
+    eval table as method `PlainMLP` when `baselines.plain_mlp_enabled`.
+  - **Ablations** (`ablations.py`, `--stage ablate`): each variant is trained
+    and evaluated end-to-end (Stage A + Stage B dual + full ARMADA eval) in an
+    **isolated checkpoint dir** (`checkpoints/ablate_<variant>/`) so the main
+    run is never overwritten.  Variants: `no_adversarial_training`,
+    `shared_group_projection`, and `drop_<Group>` for all nine canonical
+    EMBER groups (zero-masking the group's processed block after source-only
+    preprocessing — the architecture keeps its parameters but receives no
+    signal from that group; documented simplification vs. rebuilding the
+    schema).  Output: `results/ablation.csv` (`ABL:reference`, `ABL:<variant>`).
+  - **Scale study**: reference model at total source-train budgets
+    `scale_study.n_train_values` = [20 000, 50 000, 100 000] rows
+    (per-class cap = point // 3; keeps peak RAM within the 8 GB target).
+    Output: `results/scale_study.csv` (`ARMADA@<point>`).
+  - **Paired significance tests** (`eval/significance.py`): exact sign-flip
+    permutation test on per-seed paired differences (ARMADA vs every
+    comparator, per window and metric; smallest attainable p at n=3 seeds is
+    0.25 two-sided — low power stated honestly in the paper).  Output:
+    `results/significance.csv`.
+- Exact commands to reproduce:
+
+  ```bash
+  python -m armada.run --config configs/main.yaml --stage eval     # fills metrics_per_seed.csv
+  python -m armada.run --config configs/main.yaml --stage ablate   # ablation + scale + significance CSVs
+  python -m pytest tests/ -q
+  ```
+
+- Tests (144 total): sign-flip exactness (n=3 → p=2/8), pairing/skip rules,
+  variant resolution (no mutation, canonical group names), group-mask
+  behaviour, scale-point resolution from either config key, significance CSV
+  from per-seed metrics, and an end-to-end ablate/scale/significance pipeline
+  test.
+- Real-data numbers: still pending the EMBER corpus; nothing fabricated.

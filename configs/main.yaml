@@ -115,6 +115,23 @@ baselines:
   xgb_subsample: 0.9
   xgb_colsample_bytree: 0.9
   xgb_n_jobs: -1
+  plain_mlp_enabled: true       # Phase 6: Plain MLP baseline
+  plain_mlp_hidden: [256, 128]
+  plain_mlp_max_iter: 300
+  plain_mlp_lr: 0.001
+
+ablation:
+  run_variants: true
+  # training ablations + drop-one-feature-group (zero-mask after source-only
+  # preprocessing) for every canonical EMBER group
+  variants: [no_adversarial_training, shared_group_projection,
+             drop_ByteHistogram, drop_ByteEntropyHistogram, drop_StringExtractor,
+             drop_GeneralFileInfo, drop_HeaderFileInfo, drop_SectionInfo,
+             drop_ImportsInfo, drop_ExportsInfo, drop_DataDirectories]
+  run_significance: true
+  significance:
+    anchor: ARMADA
+    metrics: [auc_roc, auc_pr, f1]
 
 eval:
   threshold: 0.5              # fixed operating point for 2-class metrics

@@ -102,6 +102,18 @@ baselines:
   rf_min_samples_leaf: 2
   rf_n_jobs: -1
   rf_class_weight: balanced_subsample
+  plain_mlp_enabled: true
+  plain_mlp_hidden: [32]
+  plain_mlp_max_iter: 40
+  plain_mlp_lr: 0.001
+
+ablation:
+  run_variants: true
+  variants: [no_adversarial_training, shared_group_projection]
+  run_significance: true
+  significance:
+    anchor: ARMADA
+    metrics: [auc_roc, auc_pr, f1]
 
 eval:
   threshold: 0.5
@@ -111,7 +123,7 @@ eval:
   significance_alpha: 0.05
 
 scale_study:
-  n_train_values: [4000]
+  n_train_values: []          # empty in smoke runs
 
 figures:
   dpi: 150

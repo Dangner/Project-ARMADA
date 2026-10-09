@@ -18,7 +18,7 @@ calibrated three-way decision engine.
 | 3 | dual-discriminator DANN + TTT | **implemented** (`grl.py`, `discriminators.py`, `ttt.py`, `train/adapt.py`) |
 | 4 | adversarial training + robustness evaluation | **implemented** (`armada/attacks`, `eval/robustness.py`, `--stage robust`) |
 | 5 | immune memory + calibrated decision engine | **implemented** (`models/memory.py`, `models/decision.py`, `ARMADA` eval rows) |
-| 6 | full baselines, ablations, scale study, significance tests | planned |
+| 6 | full baselines, ablations, scale study, significance tests | **implemented** (`ablations.py`, `eval/significance.py`, `--stage ablate`) |
 | 7 | figures, tables, REPORT.md, GUI update | planned |
 
 ## Data (real EMBER 2018 only)

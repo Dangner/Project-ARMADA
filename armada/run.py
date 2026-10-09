@@ -24,7 +24,6 @@ logger = logging.getLogger("armada")
 
 STAGES = ("data", "train", "eval", "ablate", "robust", "figures", "all")
 PHASE_OF_STAGE = {
-    "ablate": "Phase 6 (ablations)",
     "figures": "Phase 7 (figures, tables, REPORT.md)",
 }
 
@@ -179,6 +178,7 @@ def stage_eval(cfg: Mapping) -> None:
         ResultsWriter,
         available_baselines,
         run_baseline_seed,
+        run_plain_mlp,
         summarise,
     )
     from armada.eval.neural import evaluate_armada_seed, evaluate_model_seed, evaluate_stage_b_seed
@@ -208,6 +208,8 @@ def stage_eval(cfg: Mapping) -> None:
                 writer,
             )
             all_rows.extend(rows)
+        if cfg.get("baselines", {}).get("plain_mlp_enabled", False):
+            all_rows.extend(run_plain_mlp(ds, cfg, writer, seed))
 
         # Source-only grouped attention (Phase 2), when a checkpoint exists.
         ckpt = Path(cfg["data"].get("checkpoints_dir", "checkpoints")) / f"armada_stageA_seed{seed}.pt"
@@ -406,6 +408,27 @@ def stage_robust(cfg: Mapping) -> None:
     log_peak_memory("robust")
 
 
+def stage_ablate(cfg: Mapping) -> None:
+    """Phase 6: training ablations + scale study + paired significance tests."""
+    from armada.ablations import run_ablations, run_scale_study, run_significance
+
+    t0 = time.perf_counter()
+    results_dir = Path(cfg["data"]["results_dir"])
+    results_dir.mkdir(parents=True, exist_ok=True)
+    save_config_used(cfg, results_dir)
+
+    ab_cfg = cfg.get("ablation", {})
+    run_ablations(cfg, results_dir)
+    run_scale_study(cfg, results_dir)
+    if ab_cfg.get("run_significance", True):
+        try:
+            run_significance(results_dir, cfg)
+        except FileNotFoundError as exc:
+            logger.warning("significance skipped: %s", exc)
+    logger.info("ablate stage finished in %.1fs", time.perf_counter() - t0)
+    log_peak_memory("ablate")
+
+
 def stage_unavailable(cfg: Mapping, stage: str) -> None:
     raise NotImplementedError(
         f"--stage {stage} is delivered in {PHASE_OF_STAGE.get(stage, 'a later phase')}. "
@@ -458,6 +481,8 @@ def main(argv=None) -> int:
                 stage_train(cfg)
             elif stage == "eval":
                 stage_eval(cfg)
+            elif stage == "ablate":
+                stage_ablate(cfg)
             elif stage == "robust":
                 stage_robust(cfg)
             else:

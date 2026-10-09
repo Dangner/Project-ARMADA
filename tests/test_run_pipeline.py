@@ -187,3 +187,46 @@ def test_phase5_armada_rows_and_decision_report(fixture_cfg, tmp_path):
     # thresholds are recorded per row and are data-derived (finite)
     assert np.isfinite(dec["malware_threshold"]).all()
     assert (dec["malware_threshold"] >= dec["suspicious_threshold"]).all()
+
+
+def test_phase6_ablate_scale_and_significance(fixture_cfg, tmp_path):
+    """--stage ablate: ablation CSV, scale CSV, significance CSV; PlainMLP row."""
+    from armada.run import stage_ablate, stage_data, stage_eval, stage_train
+
+    fixture_cfg["train"] = dict(fixture_cfg["train"], stage_a_epochs=1, stage_b_epochs=1, batch_size=64)
+    fixture_cfg["ttt"] = {"enabled": True, "steps": 1, "lr": 1e-3, "mask_ratio": 0.3}
+    fixture_cfg["memory"] = {"capacity": 256, "store_benign": True, "evict": "age", "max_age_windows": 3, "add_confidence": 0.9}
+    fixture_cfg["decision"] = {"malware_fpr_target": 0.05, "suspicious_fpr_target": 0.2, "calibrator": "logistic"}
+    fixture_cfg["baselines"]["plain_mlp_enabled"] = True
+    fixture_cfg["baselines"]["plain_mlp_hidden"] = [32]
+    fixture_cfg["baselines"]["plain_mlp_max_iter"] = 30
+    fixture_cfg["ablation"] = {
+        "run_variants": True,
+        "variants": ["no_adversarial_training", "drop_ImportsInfo"],
+        "run_significance": True,
+        "significance": {"anchor": "ARMADA", "metrics": ["auc_roc", "f1"]},
+    }
+    fixture_cfg["scale_study"] = {"n_train_values": [90]}  # total rows -> 30/label
+
+    stage_data(fixture_cfg)
+    stage_train(fixture_cfg)
+    stage_eval(fixture_cfg)
+
+    results = Path(fixture_cfg["data"]["results_dir"])
+    overall = pd.read_csv(results / "metrics_all.csv")
+    assert "PlainMLP" in set(overall["method"])
+
+    stage_ablate(fixture_cfg)
+
+    abl = pd.read_csv(results / "ablation.csv")
+    assert {"ABL:reference", "ABL:no_adversarial_training", "ABL:drop_ImportsInfo"} == set(abl["method"])
+    assert "auc_roc" in abl.columns
+
+    scale = pd.read_csv(results / "scale_study.csv")
+    assert set(scale["method"]) == {"ARMADA@90"}
+    assert (scale["scale_point"] == 90).all()
+
+    sig = pd.read_csv(results / "significance.csv")
+    assert set(sig["metric"]) == {"auc_roc", "f1"}
+    assert (sig["test"] == "exact_sign_flip").all()
+    assert "PlainMLP" in set(sig["method_b"]) or "LR" in set(sig["method_b"])
