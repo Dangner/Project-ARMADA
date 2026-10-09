@@ -1,0 +1,148 @@
+# ARMADA main experiment configuration (paper numbers come from this file).
+# Every hyperparameter used anywhere in the codebase is declared here.
+
+seed_list: [0, 1, 2]          # report mean ± std over >= 3 seeds
+device: auto                  # auto | cpu | cuda (cuda never required)
+
+data:
+  data_dir: data/ember2018    # X_train.dat, y_train.dat, metadata.csv [, X_test.dat, y_test.dat]
+  cache_dir: cache
+  checkpoints_dir: checkpoints
+  results_dir: results
+  figures_dir: figures
+  tables_dir: tables
+  logs_dir: logs
+  include_test_subset: true   # X_test.dat rows join the pool (later months, labels eval-only)
+  n_train: 20000              # stratified cap on source train rows (try 50000 / 100000 in scale study)
+  n_val: 4000                 # cap on source validation rows
+  n_per_window: 10000         # cap on labeled evaluation rows per target window
+  n_unlabeled_per_window: 10000  # cap on unlabeled (DANN/TTT) rows per target window
+  keep_float32: true
+  sentinel_value: -1.0
+
+split:
+  mode: auto                  # auto | explicit
+  source_fraction: 0.5        # auto: fraction of labeled months used as source
+  source_end_month: null      # auto: optional explicit last source month (e.g. 2017-05)
+  n_target_windows: 4         # auto: consecutive target windows T1..Tk
+  val_fraction: 0.1           # held-out part of SOURCE rows only (thresholds/early stop)
+  # explicit example:
+  #   source_months: [2017-01, 2017-02, 2017-03]
+  #   target_windows: [[2017-04, 2017-05], [2017-06, 2017-07], [2017-08, 2017-09], [2017-10, 2017-12]]
+
+model:
+  d_model: 64                 # per-group token width (spec default 64; 64-128 allowed)
+  n_heads: 4
+  n_layers: 2
+  dropout: 0.1
+  cls_hidden: 128
+  emb_dim: 64                 # z dimensionality (== d_model via CLS pooling)
+  shared_group_projection: false   # ablation: true => one shared projection instead of per-group
+  use_cls_token: true
+
+train:
+  stage_a_epochs: 15
+  stage_b_epochs: 15
+  batch_size: 256
+  lr: 1.0e-4
+  weight_decay: 1.0e-5
+  grad_clip: 5.0
+  scheduler: cosine           # cosine | onecycle | none
+  early_stopping_patience: 5
+  cls_weight: 1.0             # BCE/class-weight on classification loss
+  class_weights: balanced     # balanced | none
+  marg_weight: 0.5            # D1 (marginal discriminator) loss weight
+  cond_weight: 0.5            # D2 (class-conditional discriminator) loss weight
+  recon_weight: 0.5           # masked-reconstruction loss weight
+  adv_weight: 1.0             # FGSM/PGD adversarial-training weight (stage B)
+  adv_attack: fgsm            # fgsm | pgd (adversarial training attack)
+  grl_gamma: 10.0             # lambda(p) = 2/(1+exp(-gamma*p)) - 1
+  use_d2: true
+  use_adversarial_training: false   # toggled component (phase 4)
+  use_ttt_objective: true
+  entropy_conditioning: false # optional CDAN entropy conditioning for D2
+  amp: false                  # only used when CUDA is available
+
+ttt:
+  enabled: true
+  steps: 5
+  lr: 1.0e-4
+  mask_ratio: 0.3             # masked group-token ratio
+  online: false               # false: reset to source weights before each window
+  report_online: true         # also report the online (no-reset) TTT mode
+
+memory:
+  enabled: true
+  capacity: 4096
+  add_confidence: 0.95        # add high-confidence target detections above this
+  evict: age                  # age | lru
+  max_age_windows: 3
+  store_benign: true
+
+decision:
+  malware_fpr_target: 0.001   # threshold for MALWARE on source validation
+  suspicious_fpr_target: 0.05 # threshold for SUSPICIOUS on source validation
+  calibrator: logistic        # learned calibrator (never hand-set weights)
+
+robustness:
+  enabled: true
+  fgsm_epsilon: 0.05
+  pgd_epsilon: 0.05
+  pgd_steps: 7
+  pgd_step_size: 0.01
+  eval_epsilons: [0.0, 0.01, 0.02, 0.05, 0.1]
+  clip_min: 0.0               # EMBER constraint: count-like features non-negative
+  clip_max: null              # null => per-column max from SOURCE rows only
+
+baselines:
+  models: [LR, RF, GBDT]      # XGBoost auto-added when installed
+  lr_max_iter: 1000
+  lr_C: 1.0
+  lr_class_weight: balanced
+  rf_n_estimators: 200
+  rf_max_depth: null
+  rf_min_samples_leaf: 2
+  rf_n_jobs: -1
+  rf_class_weight: balanced_subsample
+  gbdt_max_iter: 200
+  gbdt_learning_rate: 0.1
+  gbdt_max_leaf_nodes: 31
+  gbdt_early_stopping: true
+  gbdt_validation_fraction: 0.1
+  xgb_n_estimators: 200
+  xgb_max_depth: 6
+  xgb_learning_rate: 0.1
+  xgb_subsample: 0.9
+  xgb_colsample_bytree: 0.9
+  xgb_n_jobs: -1
+  plain_mlp_enabled: true       # Phase 6: Plain MLP baseline
+  plain_mlp_hidden: [256, 128]
+  plain_mlp_max_iter: 300
+  plain_mlp_lr: 0.001
+
+ablation:
+  run_variants: true
+  # training ablations + drop-one-feature-group (zero-mask after source-only
+  # preprocessing) for every canonical EMBER group
+  variants: [no_adversarial_training, shared_group_projection,
+             drop_ByteHistogram, drop_ByteEntropyHistogram, drop_StringExtractor,
+             drop_GeneralFileInfo, drop_HeaderFileInfo, drop_SectionInfo,
+             drop_ImportsInfo, drop_ExportsInfo, drop_DataDirectories]
+  run_significance: true
+  significance:
+    anchor: ARMADA
+    metrics: [auc_roc, auc_pr, f1]
+
+eval:
+  threshold: 0.5              # fixed operating point for 2-class metrics
+  fixed_fprs: [0.001, 0.01]
+  ece_bins: 10
+  n_bootstrap: 2000           # paired bootstrap for ARMADA vs strongest baseline
+  significance_alpha: 0.05
+
+scale_study:
+  n_train_values: [20000, 50000, 100000]
+
+figures:
+  dpi: 300
+  formats: [png, pdf]
