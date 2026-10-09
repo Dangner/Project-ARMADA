@@ -23,9 +23,7 @@ import yaml
 logger = logging.getLogger("armada")
 
 STAGES = ("data", "train", "eval", "ablate", "robust", "figures", "all")
-PHASE_OF_STAGE = {
-    "figures": "Phase 7 (figures, tables, REPORT.md)",
-}
+PHASE_OF_STAGE = {}
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +427,32 @@ def stage_ablate(cfg: Mapping) -> None:
     log_peak_memory("ablate")
 
 
+def stage_figures(cfg: Mapping) -> None:
+    """Phase 7: figures (300 dpi PNG+PDF), LaTeX tables, REPORT.md results."""
+    from armada.report import update_report
+    from armada.viz import figures as viz_figures
+    from armada.viz import tables as viz_tables
+
+    t0 = time.perf_counter()
+    results_dir = Path(cfg["data"]["results_dir"])
+    figures_dir = Path(cfg["data"].get("figures_dir", "figures"))
+    tables_dir = Path(cfg["data"].get("tables_dir", "tables"))
+    report_path = Path(cfg["data"].get("report_path", "REPORT.md"))
+    figures_dir.mkdir(parents=True, exist_ok=True)
+
+    figs = viz_figures.generate_all(results_dir, figures_dir)
+    tabs = viz_tables.generate_all(results_dir, tables_dir)
+    update_report(report_path, results_dir)
+    logger.info(
+        "figures stage: %d figures, %d tables, report %s (%.1fs)",
+        len(figs),
+        len(tabs),
+        report_path,
+        time.perf_counter() - t0,
+    )
+    log_peak_memory("figures")
+
+
 def stage_unavailable(cfg: Mapping, stage: str) -> None:
     raise NotImplementedError(
         f"--stage {stage} is delivered in {PHASE_OF_STAGE.get(stage, 'a later phase')}. "
@@ -485,6 +509,8 @@ def main(argv=None) -> int:
                 stage_ablate(cfg)
             elif stage == "robust":
                 stage_robust(cfg)
+            elif stage == "figures":
+                stage_figures(cfg)
             else:
                 stage_unavailable(cfg, stage)
         except MemoryError as exc:
