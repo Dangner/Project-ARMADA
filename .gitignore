@@ -23,6 +23,10 @@ venv/
 # Prediction dumps (large .npy); metrics CSVs in results/ are kept.
 results/predictions/
 
+# Generated paper artifacts (rebuildable via --stage figures)
+/figures/
+/tables/
+
 # OS noise
 .DS_Store
 Zone.Identifier

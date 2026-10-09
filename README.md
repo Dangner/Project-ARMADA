@@ -19,7 +19,7 @@ calibrated three-way decision engine.
 | 4 | adversarial training + robustness evaluation | **implemented** (`armada/attacks`, `eval/robustness.py`, `--stage robust`) |
 | 5 | immune memory + calibrated decision engine | **implemented** (`models/memory.py`, `models/decision.py`, `ARMADA` eval rows) |
 | 6 | full baselines, ablations, scale study, significance tests | **implemented** (`ablations.py`, `eval/significance.py`, `--stage ablate`) |
-| 7 | figures, tables, REPORT.md, GUI update | planned |
+| 7 | figures, tables, REPORT.md, GUI update | **implemented** (`armada/viz`, `armada/report.py`, `armada/gui.py`, `--stage figures`) |
 
 ## Data (real EMBER 2018 only)
 
@@ -121,14 +121,31 @@ armada/
              ttt.py memory.py decision.py            (phases 2-5)
   attacks/   fgsm.py pgd.py                          (phase 4)
   train/     pretrain.py adapt.py                    (phases 2-3)
-  eval/      metrics.py baselines.py ablation.py
-             robustness.py stats.py
-  viz/       style.py figures.py                     (phase 7)
+  eval/      metrics.py baselines.py neural.py
+             robustness.py significance.py           (phases 1-6)
+  ablations.py  ablations, scale study, sign-flip tests (phase 6)
+  viz/       style.py figures.py tables.py           (phase 7)
+  report.py  REPORT.md results section (marker-delimited)
+  gui.py     ARMADA Threat Intelligence Scanner (Tkinter)
   run.py     single entry point
 configs/     main.yaml fast.yaml
 tests/       unit + pipeline tests (dummy data confined here)
 ```
 
 Legacy scripts (`01_vectorize_data.py` … `07_drift_simulation.py`,
-`Armada_train_eval.py`, `mini_project_gui.py`) are kept as reference and are
-superseded incrementally by the `armada/` package (same behaviour preserved).
+`Armada_train_eval.py`) are kept as reference and are superseded by the
+`armada/` package (same behaviour preserved).  `mini_project_gui.py` is now a
+thin launcher for `armada.gui` (same scanner flow on the ARMADA pipeline).
+
+## Figures, tables, GUI
+
+- `python -m armada.run --config configs/main.yaml --stage figures` writes
+  paper figures to `figures/` (300 dpi **PNG + PDF**, house style: white
+  background, slate text, indigo/emerald/rose/amber series), LaTeX + CSV
+  tables to `tables/`, and regenerates the marked results section of
+  `REPORT.md` from `results/*.csv` (never from hardcoded numbers; missing
+  inputs are skipped with a log line).
+- `python -m armada.gui --config configs/main.yaml` (or
+  `python mini_project_gui.py`) launches the scanner GUI.  It scores random
+  EMBER rows with the trained ARMADA model + immune memory + decision engine;
+  it refuses to invent results when no checkpoint/dataset is available.
